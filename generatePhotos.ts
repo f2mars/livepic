@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import readline from "node:readline";
 import pAll from 'p-all';
 import { fileURLToPath } from "node:url";
+import dotenv from "dotenv";
 
 type Step = {
   x: number;
@@ -36,6 +37,11 @@ let renderedLines = 0;
 const gridSize = getGridSizeFromArgs(process.argv[2]);
 const exec = promisify(execCallback);
 const execFileAsync = promisify(execFile);
+
+const envPath = path.join(process.cwd(), ".env");
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+}
 
 const setup: Setup = {
   X_STEPS: gridSize,

@@ -53,6 +53,33 @@ Start the dev server and open the preview page:
 npm run preview
 ```
 
+By default Vite serves at `http://localhost:5173/`. The preview reads `output/AvatarSprite.webp` and `output/sprite.json` from the local `output/` directory.
+
+## Docker
+
+Images generation can be run in Docker if you prefer an isolated setup.
+
+Build the image:
+
+```bash
+docker build -t livepic .
+```
+
+Run the generator (mount your input/output and supply the token, e.g. via `.env`):
+
+```bash
+docker run --rm \
+  --env-file .env \
+  -e GRID_SIZE=5 \
+  -v "$(pwd)/input:/app/input:ro" \
+  -v "$(pwd)/output:/app/output" \
+  livepic
+```
+
+- `input/photo.jpeg` must exist on the host and is mounted read-only.
+- `output/` will contain generated frames, sprite, and metadata.
+- `GRID_SIZE` is optional (odd integer); defaults to 5.
+
 ## Notes
 
 - Missing frames are retried up to two attempts; failures remain logged so you can rerun.
