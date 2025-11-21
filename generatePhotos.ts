@@ -235,6 +235,11 @@ function getGridSizeFromArgs(rawValue?: string) {
     process.exit(1);
   }
 
+  if (Number(parsed) % 2 !== 1) {
+    console.error("Grid size must be an odd integer, e.g. `npm run generate 5`");
+    process.exit(1);
+  }
+
   return parsed;
 }
 
