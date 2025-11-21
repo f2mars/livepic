@@ -2,10 +2,11 @@ import Replicate from "replicate";
 import fs from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import { exec as execCallback } from "node:child_process";
+import { exec as execCallback, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import readline from "node:readline";
 import pAll from 'p-all';
+import { fileURLToPath } from "node:url";
 
 type Step = {
   x: number;
@@ -34,6 +35,7 @@ const CONCURRENCY = 5;
 let renderedLines = 0;
 const gridSize = getGridSizeFromArgs(process.argv[2]);
 const exec = promisify(execCallback);
+const execFileAsync = promisify(execFile);
 
 const setup: Setup = {
   X_STEPS: gridSize,
@@ -45,10 +47,11 @@ const setup: Setup = {
 }
 
 const model = "fofr/expression-editor:bf913bc90e1c44ba288ba3942a538693b72e8cc7df576f3beebe56adc0a92b86";
+ensureApiToken();
 const steps = generateSteps(setup);
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 const image = fs.readFileSync(setup.FILE_NAME);
-const __dirname = path.dirname(new URL(import.meta.url).pathname);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const cost = steps.flat().length * 0.00098;
 const formatter=new Intl.NumberFormat('en-US', {
@@ -93,7 +96,7 @@ async function generate(step: Step) {
   }
 
   const startMessage = `Generating ${step.filename}...`;
-  const doneMessage = `Generated ${step.filename} ✅`;
+  const doneMessage = `Generated ${step.filename} [done]`;
   const skipMessage = `Skipping ${step.filename} (exists)`;
   const lineWidth = Math.max(startMessage.length, doneMessage.length, skipMessage.length);
   const lineIndex = registerLogLine(startMessage, lineWidth);
@@ -104,27 +107,34 @@ async function generate(step: Step) {
     return;
   }
 
-  const output = await replicate.run(model, {
-    input: {
-      image,
-      ...step,
-    },
-  });
+  try {
+    const output = await replicate.run(model, {
+      input: {
+        image,
+        ...step,
+      },
+    });
 
-  // Replicate may return a single file or an array of files
-  const fileOutput = Array.isArray(output) ? output[0] : output;
+    // Replicate may return a single file or an array of files
+    const fileOutput = Array.isArray(output) ? output[0] : output;
 
-  if (!fileOutput) {
-    throw new Error("No output from Replicate");
+    if (!fileOutput) {
+      throw new Error("No output from Replicate");
+    }
+
+    // FileOutput → Blob → ArrayBuffer → Buffer
+    const blob = await fileOutput.blob();
+    const arrayBuffer = await blob.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    await writeFile(outputPath, buffer);
+    updateLogLine(lineIndex, doneMessage, lineWidth);
+    return true;
+  } catch (error) {
+    updateLogLine(lineIndex, `Failed ${step.filename} [error]`, lineWidth);
+    console.error(`Error generating ${step.filename}:`, error);
+    return false;
   }
-
-  // FileOutput → Blob → ArrayBuffer → Buffer
-  const blob = await fileOutput.blob();
-  const arrayBuffer = await blob.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-
-  await writeFile(outputPath, buffer);
-  updateLogLine(lineIndex, doneMessage, lineWidth);
 }
 
 function round(value: number, precision: number) {
@@ -140,8 +150,12 @@ async function generateAllWithRetries(stepList: Step[], maxAttempts = 2) {
       logWithNewLine(`Retrying ${pending.length} missing images (attempt ${attempt}/${maxAttempts})...`);
     }
 
-    const actions = pending.map((step) => () => generate(step));
-    await pAll(actions, { concurrency: CONCURRENCY });
+    const actions = pending.map((step) => async () => {
+      const ok = await generate(step);
+      return ok;
+    });
+
+    await pAll(actions, { concurrency: CONCURRENCY, stopOnError: false });
 
     pending = pending.filter((step) => !isGenerated(step));
     attempt += 1;
@@ -188,19 +202,39 @@ function logWithNewLine(message: string) {
 
 async function createSprite(cellSize: number) {
   const tile = `${setup.X_STEPS}x${setup.Y_STEPS}`;
-  const command = [
-    `montage output/${setup.PHOTO_PREFIX}_*.webp`,
-    `-resize ${cellSize}x${cellSize}`,
-    `-tile ${tile}`,
-    `-geometry ${cellSize}x${cellSize}+0+0`,
-    "-background none",
-    "output/AvatarSprite.webp",
-  ].join(" ");
+  const outputDir = path.join(__dirname, "output");
+  if (!fs.existsSync(outputDir)) {
+    logWithNewLine("Output directory not found. Generate frames first.");
+    return false;
+  }
 
-  logWithNewLine(`Building sprite: ${command}`);
+  const files = fs
+    .readdirSync(outputDir)
+    .filter((file) => file.startsWith(`${setup.PHOTO_PREFIX}_`) && file.endsWith(".webp"))
+    .sort();
+
+  if (files.length === 0) {
+    logWithNewLine("No generated frames found to build sprite.");
+    return false;
+  }
+
+  const args = [
+    ...files,
+    "-resize",
+    `${cellSize}x${cellSize}`,
+    "-tile",
+    tile,
+    "-geometry",
+    `${cellSize}x${cellSize}+0+0`,
+    "-background",
+    "none",
+    "AvatarSprite.webp",
+  ];
+
+  logWithNewLine(`Building sprite with ${files.length} frames...`);
 
   try {
-    await exec(command, { cwd: __dirname });
+    await execFileAsync("montage", args, { cwd: outputDir });
     logWithNewLine("Sprite created: output/AvatarSprite.webp");
     return true;
   } catch (error) {
@@ -263,7 +297,12 @@ function getGridSizeFromArgs(rawValue?: string) {
 
 async function promptForConfirmation(message: string) {
   if (!process.stdin.isTTY) {
-    return true;
+    if (process.env.LIVEPIC_AUTO_CONFIRM === "1") {
+      logWithNewLine(`${message} [auto-confirmed via LIVEPIC_AUTO_CONFIRM]`);
+      return true;
+    }
+    logWithNewLine("Non-interactive session detected. Set LIVEPIC_AUTO_CONFIRM=1 to proceed without prompts.");
+    return false;
   }
 
   const options = ["Yes", "No"];
@@ -373,6 +412,13 @@ function generateSteps(setup: Setup) {
   }
 
   return steps;
+}
+
+function ensureApiToken() {
+  if (!process.env.REPLICATE_API_TOKEN) {
+    console.error("REPLICATE_API_TOKEN is missing. Set it in your environment or .env file.");
+    process.exit(1);
+  }
 }
 
 

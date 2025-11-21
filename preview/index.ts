@@ -3,28 +3,34 @@ type SpriteMeta = {
   spritePictureSize: number;
 };
 
+const basePath = getBasePath();
 const { gridSize, spritePictureSize } = await loadSpriteMeta();
 const livepic = document.querySelector<HTMLElement>(".livepic");
 
-initStyles().catch((error) => {
+try {
+  await initStyles();
+  init();
+} catch (error) {
   console.error("Failed to init preview:", error);
-}).then(init)
+}
 
 async function initStyles() {
   if (!livepic) {
     throw new Error("Preview element .livepic not found.");
   }
 
-  const spriteWidth = gridSize * spritePictureSize;
+    const spriteWidth = gridSize * spritePictureSize;
+    const spriteUrl = assetPath("output/AvatarSprite.webp");
 
-  livepic.style.setProperty("--cell-size", `${spritePictureSize}px`);
-  livepic.style.width = `${spritePictureSize}px`;
-  livepic.style.height = `${spritePictureSize}px`;
-  livepic.style.backgroundSize = `${spriteWidth}px ${spriteWidth}px`;
-}
+    livepic.style.setProperty("--cell-size", `${spritePictureSize}px`);
+    livepic.style.width = `${spritePictureSize}px`;
+    livepic.style.height = `${spritePictureSize}px`;
+    livepic.style.backgroundSize = `${spriteWidth}px ${spriteWidth}px`;
+    livepic.style.backgroundImage = `url(${spriteUrl})`;
+  }
 
 async function loadSpriteMeta(): Promise<SpriteMeta> {
-  const response = await fetch("/output/sprite.json");
+  const response = await fetch(assetPath("output/sprite.json"));
   if (!response.ok) {
     throw new Error(`Unable to load sprite metadata: ${response.status} ${response.statusText}`);
   }
@@ -96,4 +102,14 @@ function init() {
 
     livepic.style.backgroundPosition = posX + "% " + posY + "%";
   }
+}
+
+function getBasePath() {
+  const base = (import.meta as any).env?.BASE_URL ?? "/";
+  return base.endsWith("/") ? base : `${base}/`;
+}
+
+function assetPath(relative: string) {
+  const cleaned = relative.startsWith("/") ? relative.slice(1) : relative;
+  return `${basePath}${cleaned}`;
 }
