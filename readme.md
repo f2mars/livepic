@@ -1,6 +1,6 @@
 # Livepic
 
-Small utility to generate a grid of face images with slightly different head/eye positions using Replicate, then build a sprite sheet for a mouse-following avatar preview.
+Small utility to generate a grid of face images with slightly different head/eye positions using [Replicate](https://replicate.com/kylan02/face-looker), then build a sprite sheet for a mouse-following avatar preview.
 
 ## Requirements
 
