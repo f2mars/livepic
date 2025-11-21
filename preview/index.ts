@@ -52,10 +52,16 @@ function init() {
   window.addEventListener("resize", updateRect);
   window.addEventListener("scroll", updateRect, { passive: true });
   document.addEventListener("mousemove", updateCoordinats);
+  document.addEventListener("touchmove", handleTouch);
 
   updateFrame();
 
-  function updateCoordinats(e) {
+  function handleTouch(e: TouchEvent) {
+    const touch = e.touches[0];
+    updateCoordinats(touch);
+  }
+
+  function updateCoordinats(e: MouseEvent | Touch) {
     pointerX = e.clientX;
     pointerY = e.clientY;
   }
