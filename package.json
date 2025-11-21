@@ -4,9 +4,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "generate": "tsx --env-file=.env generatePhotos.ts",
-    "generate-video": "tsx --env-file=.env generateVideo.ts",
-    "preview": "vite --port 6767"
+    "preview": "vite",
+    "generate": "tsx --env-file=.env generatePhotos.ts"
   },
   "author": "",
   "license": "ISC",

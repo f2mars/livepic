@@ -71,7 +71,10 @@ if (generatedAll) {
   const shouldBuildSprite = await promptForConfirmation("Proceed to create sprite?");
   if (shouldBuildSprite) {
     const spriteSize = await promptForNumber("Sprite cell size in px (default 160): ", 160);
-    await createSprite(spriteSize);
+    const created = await createSprite(spriteSize);
+    if (created) {
+      await writeSpriteMetadata({ gridSize: setup.X_STEPS, spritePictureSize: spriteSize });
+    }
   } else {
     logWithNewLine("Sprite creation skipped by user request.");
   }
@@ -199,10 +202,25 @@ async function createSprite(cellSize: number) {
   try {
     await exec(command, { cwd: __dirname });
     logWithNewLine("Sprite created: output/AvatarSprite.webp");
+    return true;
   } catch (error) {
     console.error("Failed to create sprite:", error);
     process.exitCode = 1;
+    return false;
   }
+}
+
+async function writeSpriteMetadata(meta: { gridSize: number; spritePictureSize: number }) {
+  const outputDir = path.join(__dirname, "output");
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+  }
+
+  const metaPath = path.join(outputDir, "sprite.json");
+  const payload = JSON.stringify(meta, null, 2);
+
+  await writeFile(metaPath, payload, "utf8");
+  logWithNewLine(`Sprite metadata saved to output/sprite.json`);
 }
 
 async function promptForNumber(message: string, defaultValue: number) {
